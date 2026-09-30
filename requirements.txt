@@ -1,0 +1,5 @@
+numpy>=1.26
+requests>=2.31
+sqlite-vec>=0.1.6
+pypdf>=4.0
+lxml>=5.0
