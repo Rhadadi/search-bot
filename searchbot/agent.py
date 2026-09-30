@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 """Agentic loop: if the corpus can't answer, ACQUIRE more science and re-ask.
 
   retrieve -> sufficient?
@@ -57,7 +63,7 @@ def sufficiency(hits, question=None):
     return (len(missing) == 0), missing
 
 
-def _merge_per_term(c, hits, question, topk, ev, search_slug=None):
+def _merge_per_term(c, hits, question, topk, ev, search_slug=None, rank=None):
     """Ensure every distinctive question term contributes top hits, so a
     multi-part question gets evidence for EACH part (union), not just the
     dominant topic. Re-ranks the union by RRF sum with doc-diversity cap."""
@@ -70,7 +76,8 @@ def _merge_per_term(c, hits, question, topk, ev, search_slug=None):
         # missing term + the question's own outcome words (a bare one-word
         # query ranks poorly in BM25; 'berberine glucose blood pressure' hits
         # the right papers)
-        extra = retriever.retrieve(c, f"{w} {companions}".strip(), slug=search_slug, k=6)
+        extra = retriever.retrieve(c, f"{w} {companions}".strip(), slug=search_slug, k=6,
+                                 **(rank or {}))
         got = 0
         added = []
         for h in extra:
@@ -130,7 +137,10 @@ def _question_keywords(question):
                "compare", "comparison", "versus", "vs", "between", "many", "several"}
     specific = sorted((w for w in dict.fromkeys(words) if w not in generic),
                       key=len, reverse=True)
-    fallback = [w for w in dict.fromkeys(words) if w not in specific]
+    # the fallback must exclude generic too: letting them back in is what put
+    # "effects study" into catalogue queries in the first place
+    fallback = [w for w in dict.fromkeys(words)
+                if w not in generic and w not in specific]
     return (specific + fallback)[:4]
 
 
@@ -237,8 +247,9 @@ def _derive_folder(question):
 
 
 def ask_agentic(c, slug, session_id, question, topk=None, log=None, trace=None,
-                acquire=True):
+                acquire=True, rank=None):
     from .trace import Ev
+    rank = rank or {}
     ev = Ev(log=log, trace=trace)
     search_slug = pipeline_normalize_slug(slug)
     mem_slug = slug or "all"
@@ -250,7 +261,7 @@ def ask_agentic(c, slug, session_id, question, topk=None, log=None, trace=None,
     rounds = []
 
     t0 = time.time()
-    hits = retriever.retrieve(c, question, slug=search_slug, k=topk)
+    hits = retriever.retrieve(c, question, slug=search_slug, k=topk, **rank)
     _emit_hits(ev, "retrieve", f"hybrid retrieval (vec+BM25+RRF): {len(hits)} hit(s)",
                hits, ms=int((time.time()-t0)*1000))
     ok, missing = sufficiency(hits, question)
@@ -278,9 +289,9 @@ def ask_agentic(c, slug, session_id, question, topk=None, log=None, trace=None,
                        "folders": [search_slug or (_folder_for(t, question) if t else None)
                                    for t in (missing or [None])]})
         t0 = time.time()
-        hits = retriever.retrieve(c, question, slug=search_slug, k=topk)
+        hits = retriever.retrieve(c, question, slug=search_slug, k=topk, **rank)
         if search_slug is None:
-            hits = _merge_per_term(c, hits, question, topk, ev, None)
+            hits = _merge_per_term(c, hits, question, topk, ev, None, rank=rank)
         _emit_hits(ev, "retrieve", f"re-retrieval after acquire: {len(hits)} hit(s)",
                    hits, ms=int((time.time()-t0)*1000), round=len(rounds))
         ok, missing = sufficiency(hits, question)

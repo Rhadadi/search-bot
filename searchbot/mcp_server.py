@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 """Stdio MCP server exposing the search-bot RAG engine to any MCP client.
 
 Tools:
@@ -5,7 +11,6 @@ Tools:
   add_search               - create search/{slug} folder and index every PDF/XML in it
   ask                      - grounded RAG answer for one search (uses external memory)
   index_status             - indexing job progress
-  corpus_stats             - docs/chunks counts
   libgen_search            - federated catalogue search (LibGen + Anna's Archive/arXiv/PubMed)
   libgen_download          - download a record's file into the search folder, then index it
 """
@@ -25,7 +30,11 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {
          "slug": {"type": "string"}, "question": {"type": "string"},
          "session_id": {"type": "string", "description": "stable id to keep conversation memory"},
-         "acquire": {"type": "boolean", "description": "auto-download more papers when evidence is thin (default true)"}},
+         "acquire": {"type": "boolean", "description": "auto-download more papers when evidence is thin (default true)"},
+         "year_after": {"type": "integer", "description": "ignore evidence published before this year"},
+         "year_before": {"type": "integer", "description": "ignore evidence published after this year"},
+         "recency": {"type": "number", "description": "weight of a half-life recency boost added to RRF (0 = off)"},
+         "citations": {"type": "number", "description": "weight of a log-scaled OpenAlex citation-count boost (0 = off; run scripts/citations.py first)"}},
          "required": ["slug", "question"]}},
     {"name": "index_status", "description": "Indexing jobs status for a slug.",
      "inputSchema": {"type": "object", "properties": {"slug": {"type": "string"}}}},
@@ -73,13 +82,15 @@ def _dispatch(name, args):
         return {"slug": slug, "path": str(d), "job": job,
                 "message": "indexing started in background; poll index_status"}
     if name == "ask":
-        from . import agent
+        from . import agent, retriever
         events = []
+        rank = retriever.rank_opts(args)
         res = agent.ask_agentic(c, args["slug"], args.get("session_id", "mcp-default"),
                                 args["question"],
-                                log=lambda m: events.append(m)) if args.get("acquire", True) \
+                                log=lambda m: events.append(m), rank=rank) \
+            if args.get("acquire", True) \
             else pipeline.answer(c, args["slug"], args.get("session_id", "mcp-default"),
-                                 args["question"])
+                                 args["question"], rank=rank)
         res["agent_events"] = events
         return res
     if name == "index_status":

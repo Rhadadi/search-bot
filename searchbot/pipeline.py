@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 """Answer pipeline: retrieve -> cite -> grounded answer (English), enforced."""
 import re
 from . import config, db, llm, memory, retriever, libgen
@@ -35,18 +41,19 @@ def format_evidence(hits):
     return "\n\n".join(blocks)
 
 
-def answer(c, slug: str, session_id: str, question: str, topk=None):
+def answer(c, slug: str, session_id: str, question: str, topk=None, rank=None):
     search_slug = None if (not slug or slug == "all") else slug
     mem_slug = slug or "all"
     memory.ensure_session(c, session_id, mem_slug)
     question = question.strip()[:ASK_LIMIT]
 
     # 1) widen the question with web/libgen keywords when corpus recall is weak
-    hits = retriever.retrieve(c, question, slug=search_slug, k=topk)
+    rank = rank or {}
+    hits = retriever.retrieve(c, question, slug=search_slug, k=topk, **rank)
     if len(hits) < 3 or (hits and hits[0]["score"] < 0.025):
         terms = libgen.suggest_terms(question)
         if terms and terms != question:
-            hits2 = retriever.retrieve(c, terms, slug=search_slug, k=topk)
+            hits2 = retriever.retrieve(c, terms, slug=search_slug, k=topk, **rank)
             seen = {h["chunk_id"] for h in hits}
             hits = (hits + [h for h in hits2 if h["chunk_id"] not in seen])[: (topk or config.FINAL_K)]
 

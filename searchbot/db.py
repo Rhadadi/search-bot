@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 """SQLite schema: corpus (docs+chunks+fts5+vec0) and memory (sessions/turns/facts)."""
 import sqlite3
 import struct
@@ -10,7 +16,8 @@ CREATE TABLE IF NOT EXISTS searches(
 CREATE TABLE IF NOT EXISTS docs(
   id INTEGER PRIMARY KEY, slug TEXT, kind TEXT, source_file TEXT,
   title TEXT, authors TEXT, year TEXT, journal TEXT, doi TEXT, pmcid TEXT, pmid TEXT,
-  url TEXT, license TEXT, n_chunks INTEGER DEFAULT 0);
+  url TEXT, license TEXT, n_chunks INTEGER,
+  citations INTEGER, citations_updated TEXT, citations_source TEXT);
 CREATE INDEX IF NOT EXISTS ix_docs_slug ON docs(slug);
 CREATE TABLE IF NOT EXISTS chunks(
   id INTEGER PRIMARY KEY, slug TEXT, doc_id INTEGER, ordinal INTEGER, text TEXT);
@@ -60,9 +67,27 @@ def connect() -> sqlite3.Connection:
     return c
 
 
+"""Columns added after the first release: added by ALTER on existing databases,
+since CREATE TABLE IF NOT EXISTS leaves an already-present table untouched."""
+_ADDED_COLUMNS = {
+    "docs": [("citations", "INTEGER"), ("citations_updated", "TEXT"),
+             ("citations_source", "TEXT")],
+}
+
+
+def migrate(c: sqlite3.Connection) -> None:
+    for table, cols in _ADDED_COLUMNS.items():
+        have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+        for name, sqltype in cols:
+            if name not in have:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}")
+    c.commit()
+
+
 def init(c: sqlite3.Connection, dim: int) -> None:
     c.executescript(_SCHEMA)
     c.executescript(_vec_schema.format(dim=dim))
+    migrate(c)
     c.commit()
 
 

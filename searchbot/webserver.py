@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 """Local web server: tiny HTML chat UI + JSON API for the search-bot RAG engine.
 
 Endpoints:
@@ -154,22 +160,24 @@ class H(BaseHTTPRequestHandler):
 
                 def work(tr=tr):
                     import time as _t
+                    from . import retriever
                     t0 = _t.time()
+                    events = []
+                    rank = retriever.rank_opts(b)
                     try:
                         if b.get("acquire", True):
-                            events = []
                             res = agent.ask_agentic(conn(), b["slug"],
                                                     b.get("session_id") or "web",
                                                     b["question"], topk=b.get("topk"),
                                                     log=lambda m: events.append(m),
-                                                    trace=tr)
+                                                    trace=tr, rank=rank)
                             res["agent_events"] = events
                         else:
                             res = agent.ask_agentic(conn(), b["slug"],
                                                     b.get("session_id") or "web",
                                                     b["question"], topk=b.get("topk"),
                                                     log=lambda m: events.append(m),
-                                                    trace=tr, acquire=False)
+                                                    trace=tr, acquire=False, rank=rank)
                             res["agent_events"] = events
                         tr.emit("done", "completed",
                                 ms=int((_t.time() - t0) * 1000), count=len(tr.events))
