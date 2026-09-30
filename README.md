@@ -149,6 +149,7 @@ web/index.html        chat UI with evidence panel
 scripts/              index.py, ask.py, citations.py, start_servers.sh
 tests/                stdlib unittest suite — no model server, no corpus, no network
 .github/workflows/    CI: the suite on 3.11 / 3.12 / 3.13
+CHANGELOG.md          dated update log
 searchbot_mcp.py      standalone MCP entry point for clients that scrub cwd/PYTHONPATH
 web_run.py            starts the web UI
 ```
@@ -259,6 +260,8 @@ network. Coverage: the control-token scrubber and chat retry ladder, the
 vec+BM25+RRF fusion and every ranking option, the acquire gate's term coverage,
 the OpenAlex backfill (lanes, batching, dead-end stamping), schema migration, the
 HTTP API's routing and trace, and the MCP tool schemas plus JSON-RPC loop.
+
+What changed and when is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Notes from building this
 
