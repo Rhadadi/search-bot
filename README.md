@@ -152,12 +152,45 @@ All via environment variables, no code edits needed:
 | variable | default | meaning |
 |---|---|---|
 | `SEARCHBOT_CHAT_URL` | `http://127.0.0.1:8080/v1` | OpenAI-compatible chat endpoint |
-| `SEARCHBOT_CHAT_MODEL` | *(auto-detect)* | pin a model name instead of detecting |
-| `SEARCHBOT_EMBED_URL` | `http://127.0.0.1:8082/v1` | embedding endpoint |
+| `SEARCHBOT_CHAT_MODEL` | *(auto-detect)* | pin a model name instead of detecting from `/v1/models` |
+| `SEARCHBOT_EMBED_URL` | `http://127.0.0.1:8082/v1` | OpenAI-compatible embeddings endpoint |
+| `SEARCHBOT_EMBED_MODEL` | *(omitted from request)* | model name for multi-model embed servers |
+| `SEARCHBOT_QUERY_INSTRUCT` | embeddinggemma `Instruct: …\nQuery: ` | retrieval prefix added to queries only |
 | `SEARCHBOT_LIBGEN_BIN` | `bin/libgen-mcp` | path to the libgen-mcp binary |
 | `SEARCHBOT_SOCKS` | *(none)* | SOCKS proxy for catalogue traffic only |
 | `SEARCHBOT_CHAT_PORT` | `8080` | health-check port used by `start_servers.sh` |
 | `SEARCHBOT_LLAMA_BIN` | `~/.local/bin/llama` | llama.cpp binary used by `start_servers.sh` |
+| `SEARCHBOT_EMBED_GGUF` | `models/embeddinggemma-300M-Q8_0.gguf` | weights used by `start_servers.sh` |
+
+### Bring your own model
+
+The chat and embedding endpoints are independent and both are plain
+OpenAI-compatible HTTP, so nothing has to be local:
+
+```bash
+# one server serving both chat and embeddings (Ollama)
+export SEARCHBOT_CHAT_URL=http://127.0.0.1:11434/v1
+export SEARCHBOT_EMBED_URL=http://127.0.0.1:11434/v1
+export SEARCHBOT_EMBED_MODEL=qwen3-embedding:0.6b
+export SEARCHBOT_QUERY_INSTRUCT=          # no instruction prefix
+
+# a hosted API
+export SEARCHBOT_CHAT_URL=https://api.example.com/v1
+export SEARCHBOT_CHAT_MODEL=their-model
+export SEARCHBOT_EMBED_URL=https://api.example.com/v1
+export SEARCHBOT_EMBED_MODEL=their-embedding-model
+export SEARCHBOT_QUERY_INSTRUCT=
+```
+
+What the engine sends is the bare minimum of the spec: `{"input": [...]}`
+(plus `model` only when you set it) to `/embeddings`, and a standard
+`/chat/completions` payload. Vectors are L2-normalized client-side, and the
+sqlite-vec column dimension is taken from the first response — so any embedder
+size works, but the dimension is fixed per table, so **delete `data/searchbot.db`
+and re-index after switching embedders**.
+
+If your embedder wants its own query prefix (bge, e5, gte), put it in
+`SEARCHBOT_QUERY_INSTRUCT`; it is applied to queries only, never to indexed passages.
 
 MCP clients register the server by launching `python -m searchbot.mcp_server` from
 the project root with a virtualenv that has the deps installed; it exposes

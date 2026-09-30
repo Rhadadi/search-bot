@@ -3,7 +3,7 @@
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${SEARCHBOT_LLAMA_BIN:-$HOME/.local/bin/llama}"
-M="${SEARCHBOT_EMBED_MODEL:-$ROOT/models/embeddinggemma-300M-Q8_0.gguf}"
+M="${SEARCHBOT_EMBED_GGUF:-$ROOT/models/embeddinggemma-300M-Q8_0.gguf}"
 CHATPORT=${SEARCHBOT_CHAT_PORT:-8080}
 if ! curl -s --max-time 2 http://127.0.0.1:$CHATPORT/health | grep -q ok; then
   echo "WARN: no chat server on :$CHATPORT — start any OpenAI-compatible server, or set SEARCHBOT_CHAT_URL"

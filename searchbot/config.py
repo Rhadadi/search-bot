@@ -14,6 +14,9 @@ CHAT_URL = os.environ.get("SEARCHBOT_CHAT_URL", "http://127.0.0.1:8080/v1")
 # from /v1/models, so swapping models doesn't need config changes.
 CHAT_MODEL = os.environ.get("SEARCHBOT_CHAT_MODEL", "")
 EMBED_URL = os.environ.get("SEARCHBOT_EMBED_URL", "http://127.0.0.1:8082/v1")
+# Model name sent to the embeddings endpoint. llama.cpp serves one model and
+# ignores it; OpenAI-compatible multi-model servers (Ollama, vLLM, hosted) require it.
+EMBED_MODEL = os.environ.get("SEARCHBOT_EMBED_MODEL", "")
 
 # Retrieval / prompt budget
 CHUNK_CHARS = 1100          # ~300 tokens per chunk
@@ -25,6 +28,10 @@ RECENT_TURNS = 8            # raw turns re-injected each call
 SUMMARY_TRIGGER = 12        # unsummarized turns before compaction
 QUERY_TIMEOUT_S = 180
 
-# embeddinggemma retrieval instruction prefix for QUERIES only
-QUERY_INSTRUCT = ("Instruct: Given a scientific question, retrieve relevant "
-                  "passages from research papers\nQuery: ")
+# Retrieval instruction prefixed to QUERIES only. The "Instruct: ...\nQuery: "
+# shape is what embeddinggemma is trained on; most other embedders want either
+# their own prefix or none — set SEARCHBOT_QUERY_INSTRUCT="" for those.
+QUERY_INSTRUCT = os.environ.get(
+    "SEARCHBOT_QUERY_INSTRUCT",
+    "Instruct: Given a scientific question, retrieve relevant "
+    "passages from research papers\nQuery: ")

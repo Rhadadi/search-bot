@@ -13,8 +13,11 @@ def embed(texts, is_query: bool = False, batch_size: int = 8):
     out = []
     for i in range(0, len(texts), batch_size):
         batch = [config.QUERY_INSTRUCT + t if is_query else t for t in texts[i:i + batch_size]]
-        r = requests.post(config.EMBED_URL + "/embeddings",
-                          json={"input": batch, "normalize": False}, timeout=180)
+        payload = {"input": batch}
+        if config.EMBED_MODEL:
+            payload["model"] = config.EMBED_MODEL
+        # vectors are L2-normalized here, so no server-side normalize option is used
+        r = requests.post(config.EMBED_URL + "/embeddings", json=payload, timeout=180)
         if r.status_code == 500 and len(batch) > 1:
             # one oversized text poisons the batch — go one-by-one
             for one in batch:
