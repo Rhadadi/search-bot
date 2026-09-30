@@ -3,13 +3,16 @@
 A grounded scientific RAG bot: it answers **only from indexed research PDFs**, and
 every claim is cited to an `[E#]` evidence entry.
 
-The driving model is a small 3B local model with effectively no long-term memory,
-so all state lives **outside the model** in SQLite and is re-injected on every call.
+The bot talks to **any OpenAI-compatible chat endpoint** — a small local model, a
+large one, llama.cpp, vLLM, Ollama, or a hosted API. Nothing in the code assumes a
+particular model or vendor. All conversational state lives **outside the model** in
+SQLite and is re-injected on every call, so quality depends on the corpus and the
+retrieval, not on how much the model can hold in context.
 Retrieval is hybrid (vector + BM25 with RRF fusion), and when the local corpus is
 too thin the agent can fetch and index more papers on its own.
 
-Everything runs locally: no cloud API, no data leaves the machine except outbound
-catalogue/PDF lookups.
+By default everything runs locally: no cloud API is required, and no data leaves
+the machine except outbound catalogue/PDF lookups.
 
 ---
 
@@ -24,24 +27,26 @@ catalogue/PDF lookups.
 └─────────────┘                  │  RAG engine        │
                                  │  searchbot/*.py    │
                                  └──┬──────────┬──────┘
-              chat model :8080 ◄────┘          └──► embeddings :8082
-              (llama.cpp, user-run)     (embeddinggemma-300M Q8, mean pooling)
-                                              │
+              chat endpoint ◄───────┘          └──► embeddings :8082
+    any OpenAI-compatible server       (embeddinggemma-300M Q8, mean pooling)
+     (you choose, local or hosted)              │
                        SQLite data/searchbot.db│ chunks + FTS5(BM25) + vec0(768d)
                                               │
                                  libgen-mcp ◄─┘  (LibGen + Anna's Archive +
                                                arXiv / Crossref / PubMed / EuropePMC)
 ```
 
-Two OpenAI-compatible servers back the engine and are started by you:
+Two OpenAI-compatible endpoints back the engine:
 
-| role | port | model |
+| role | default | what it can be |
 |---|---|---|
-| chat / generation | `:8080` | any llama.cpp-served chat model (LFM2.5-3B by default) |
-| embeddings | `:8082` | `embeddinggemma-300M-Q8_0` + `--embeddings --pooling mean` |
+| chat / generation | `:8080` | **any** model behind any OpenAI-compatible `/v1/chat/completions` server |
+| embeddings | `:8082` | any `/v1/embeddings` server (dev default: `embeddinggemma-300M-Q8_0` + `--embeddings --pooling mean`) |
 
-The chat model is **auto-detected**: `llm.chat_model()` reads whatever `/v1/models`
-reports, so swapping models needs no code change.
+The chat model name is **auto-detected** from `/v1/models`, so swapping models
+needs no code change — or no config change, just point `SEARCHBOT_CHAT_URL`
+somewhere else. Embedding dimension is read back from the first response, so a
+different embedder size works too (re-index after switching).
 
 ## Pipeline per question
 
@@ -112,18 +117,24 @@ in `models/`, the `bin/libgen-mcp` binary, and all runtime state under `data/`.
 
 ```bash
 python3.12 -m venv .venv
-.venv/bin/pip install llama-cpp-python sqlite-vec requests   # plus your MCP deps
+.venv/bin/pip install numpy sqlite-vec requests
 
-# 1. start the model servers (chat server on :8080 you start yourself)
-scripts/start_servers.sh            # brings up the embedder on :8082
+# 1. point the bot at a chat model — any OpenAI-compatible server works.
+#    e.g. llama.cpp:  llama server -m <your-model> --port 8080 --host 127.0.0.1
+#    e.g. Ollama:    export SEARCHBOT_CHAT_URL=http://127.0.0.1:11434/v1
+export SEARCHBOT_CHAT_URL=http://127.0.0.1:8080/v1     # optional; this is the default
 
-# 2. drop PDFs into a topic folder and index it
+# 2. bring up an embeddings server on :8082 (embeddinggemma is the reference config;
+#    scripts/start_servers.sh is an example, not a requirement)
+scripts/start_servers.sh
+
+# 3. drop PDFs into a topic folder and index it
 .venv/bin/python scripts/index.py ephedra
 
-# 3. use it
-.venv/bin/python web_run.py         # UI at http://127.0.0.1:8181
-.venv/bin/python scripts/ask.py ephedra   # CLI chat
-.venv/bin/python searchbot_mcp.py         # MCP server
+# 4. use it
+.venv/bin/python web_run.py                   # UI at http://127.0.0.1:8181
+.venv/bin/python scripts/ask.py ephedra       # CLI chat
+.venv/bin/python searchbot_mcp.py             # MCP server
 ```
 
 ### Adding material
@@ -155,27 +166,34 @@ the project root with a virtualenv that has the deps installed; it exposes
 
 ## Notes from building this
 
-These were measured, not assumed:
+Measured with the reference setup (llama.cpp chat + embeddinggemma-300M-Q8_0):
 
 - **Pooling matters.** With `embeddinggemma-300M-Q8_0`: `--pooling mean` gives
   0.73 similarity for related text vs 0.42 for unrelated. `rank`/`last` produce
   degenerate zero vectors; `cls` gives no separation (0.81/0.81). Use `mean`.
 - **Embeddings need their own server.** A chat llama.cpp server returns 501 for
   `/v1/embeddings` unless launched with `--embeddings`, which is why `:8080` and
-  `:8082` are separate.
+  `:8082` are separate. Not a problem if you use Ollama, vLLM, or a hosted API,
+  which serve both from one endpoint.
+- **sqlite-vec dimension is fixed per table.** It is read from the first embedding
+  response, so switching embedders means deleting and re-indexing the corpus.
 - **libgen-mcp returns markdown.** `search` output is a markdown table, parsed to
   JSON by `libgen.py`; `results_per_page` accepts only 25/50/100; `download` needs
   `md5`/`doi`/`isbn` plus a `path` confined by `LIBGEN_MCP_ALLOWED_DOWNLOAD_DIRS`.
   Anna's Archive is already federated into the results.
 - Catalogue traffic is routed through a SOCKS proxy only in the libgen-mcp
   subprocess — never in the Python process.
-- sqlite-vec 768-dim KNN and FTS5 behaviour verified on Python 3.12.
+- sqlite-vec KNN and FTS5 behaviour verified on Python 3.12.
 
 ## Caveats
 
 - PDFs come from third-party catalogues. **You are responsible for the rights to
   whatever you download**, which is why the corpus and the binary are gitignored.
 - The web UI binds to `127.0.0.1` only — it has no authentication. Don't expose it.
-- Small model, so grounding is enforced by the pipeline (citation validation, fact
-  extraction, retry/reset), not by the model's own judgment. Expect the occasional
-  weak answer when the corpus simply has nothing to say.
+- Grounding is enforced by the pipeline (citation validation, fact extraction,
+  retry/reset) rather than by the model's own judgment, which keeps weak models
+  honest and strong models equally cited. `chat_llm()` retries on empty or
+  control-token-garbage output; that path exists for tool-trained local GGUFs and
+  is a no-op for well-behaved APIs.
+- Answer quality tracks the corpus: expect a weak answer when nothing indexed has
+  anything to say.

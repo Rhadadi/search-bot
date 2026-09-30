@@ -1,4 +1,4 @@
-"""Answer pipeline: retrieve -> cite -> LFM grounded answer (English), enforced."""
+"""Answer pipeline: retrieve -> cite -> grounded answer (English), enforced."""
 import re
 from . import config, db, llm, memory, retriever, libgen
 

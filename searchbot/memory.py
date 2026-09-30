@@ -1,8 +1,8 @@
-"""External memory for LFM (the model itself has weak retention — the bot stores
+"""External memory for the chat model (it may have weak retention — the bot stores
 everything in SQLite and re-injects it every call):
 
   1. rolling turns  — last RECENT_TURNS raw turns always in the prompt
-  2. session summary — compacted older history, refreshed by LFM itself
+  2. session summary — compacted older history, refreshed by the model itself
   3. facts ledger   — durable per-search notes extracted after each Q&A
   4. search scoping — memory keyed by search slug
 """
@@ -85,7 +85,7 @@ _FACT_RE = re.compile(r"^\s*FACT:\s*(.+)", re.M | re.I)
 
 
 def extract_facts(c, session_id: str, slug: str, answer: str):
-    """LFM was asked to emit FACT: lines; also store the last question as a fact."""
+    """The model was asked to emit FACT: lines; also store the last question as a fact."""
     n = 0
     for m in _FACT_RE.finditer(answer):
         t = m.group(1).strip()

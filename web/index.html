@@ -71,7 +71,7 @@ hr{border:none;border-top:1px solid var(--border);margin:2px 0}
 <body>
 <aside>
   <h1>Search Bot</h1>
-  <div class="small">grounded RAG · LFM local · citations only</div>
+  <div class="small">grounded RAG · local model · citations only</div>
   <button onclick="newChat()" style="background:#1c3457">＋ New chat</button>
   <div><b class="small">Chat history</b><div id="sessions"></div></div>
   <hr>
@@ -109,7 +109,7 @@ const PHASE={
   download_done:{ic:'✅',t:'saved'}, download_error:{ic:'❌',t:'download failed'},
   index:{ic:'📇',t:'chunk + embed + FTS'}, index_done:{ic:'📇',t:'indexed'},
   merge:{ic:'🧵',t:'per-term evidence merge'}, merge_extra:{ic:'🧵',t:'merge'},
-  prompt:{ic:'🧩',t:'prompt assembly'}, generate:{ic:'⚡',t:'LFM generating'},
+  prompt:{ic:'🧩',t:'prompt assembly'}, generate:{ic:'⚡',t:'model generating'},
   delta:{ic:'✍️',t:''}, reset:{ic:'🔄',t:'generation retry'},
   generate_done:{ic:'✅',t:'generation finished'},
   memory:{ic:'🗂️',t:'memory'}, done:{ic:'🏁',t:'done'}, error:{ic:'❌',t:'error'}};

@@ -1,4 +1,4 @@
-"""Clients for the two local llama.cpp servers: LFM chat (8081) and embedder (8082)."""
+"""Clients for the chat and embedding endpoints (both OpenAI-compatible)."""
 import json
 import numpy as np
 import requests
@@ -144,9 +144,9 @@ def _stream_once(payload, on_delta):
 
 
 def chat_llm(messages, temperature=0.3, max_tokens=700, on_delta=None, on_retry=None):
-    """Completion from the LFM server. Returns clean prose text.
+    """Completion from the chat endpoint. Returns clean prose text.
 
-    Two failure modes of local reasoning/tool-trained GGUFs are handled:
+    Two failure modes of reasoning/tool-trained chat models are handled:
       1. thinking eats the token budget -> empty content (finish=length)
       2. tool-call syntax bleeds into content as raw control tokens
          ('<|tool_call_start|>[google(...)]<|tool_call_end|>')
