@@ -1,0 +1,49 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.mcp.json
+
+# --- Local config / secrets (keep .env.example) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Model weights (314 MB — download separately) ---
+models/
+*.gguf
+*.safetensors
+*.bin
+
+# --- PDF / full-text corpus: copyrighted papers, do not redistribute ---
+search/
+*.pdf
+*.xml
+*.bib
+data/libgen_downloads/
+
+# --- Third-party binaries (25 MB static Go) + checksums ---
+bin/
+
+# --- Runtime state: DB, chat turns, logs, test output ---
+data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.jsonl
+logs-embedder.log
+web_run.log
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

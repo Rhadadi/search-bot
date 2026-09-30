@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search Bot — grounded RAG</title>
+<style>
+:root{--bg:#0b0e13;--panel:#141923;--border:#242c39;--fg:#dfe6f2;--mut:#8290a6;
+--acc:#4f8ff7;--ok:#3ecf8e;--warn:#e8b33c;--err:#ef6a6a;--tool:#a78bfa;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg);display:flex;height:100vh}
+aside{width:280px;min-width:280px;background:var(--panel);border-right:1px solid var(--border);padding:12px;display:flex;flex-direction:column;gap:9px;overflow:auto}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+h1{font-size:15px;margin:0;color:var(--acc)}
+.small{font-size:12px;color:var(--mut)}
+input,button,select{font:inherit;background:#0a0d12;color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:7px 10px}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+#chat{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:88%;padding:10px 14px;border-radius:12px;white-space:pre-wrap;overflow-wrap:break-word}
+.user{align-self:flex-end;background:#1c3457}
+.assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--border)}
+.sysline{align-self:center;font-size:12px;color:var(--mut)}
+/* ---- agent trace ---- */
+.trace{align-self:flex-start;width:88%;background:#0d1117;border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:12.5px}
+.thead{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#111826;border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+.thead .st{font-weight:600;color:var(--tool)}
+.thead .tm{margin-left:auto;color:var(--mut);font-family:var(--mono);font-size:11px}
+.thead .chev{transition:transform .15s;color:var(--mut)}
+.trace.closed .chev{transform:rotate(-90deg)}
+.trace.closed .tbody{display:none}
+.tbody{max-height:340px;overflow:auto}
+.step{display:flex;gap:8px;padding:6px 12px;border-bottom:1px solid #1a212d;align-items:flex-start}
+.step:last-child{border-bottom:none}
+.step .ic{width:16px;flex:none;text-align:center;margin-top:1px}
+.step .body{flex:1;min-width:0}
+.step .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.02em;color:var(--acc)}
+.step .lbl.acquire,.step .lbl.download,.step .lbl.download_done,.step .lbl.download_error,.step .lbl.libgen_search,.step .lbl.libgen_results,.step .lbl.skip_dup,.step .lbl.acquire_target,.step .lbl.acquire_plan{color:var(--tool)}
+.step .lbl.generate,.step .lbl.generate_done,.step .lbl.prompt{color:var(--ok)}
+.step .lbl.gate,.step .lbl.index,.step .lbl.index_done,.step .lbl.memory,.step .lbl.merge,.step .lbl.merge_extra{color:var(--warn)}
+.step .lbl.error,.step .lbl.download_error{color:var(--err)}
+.step .txt{color:var(--fg);word-break:break-word}
+.step .ms{color:var(--mut);font-family:var(--mono);font-size:11px;flex:none}
+.hitlist{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+.hitlist li{background:#131a26;border:1px solid #1d2634;border-radius:6px;padding:4px 8px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hitlist li b{color:var(--fg);font-weight:500}
+.hitlist .lane{font-family:var(--mono);font-size:10.5px;padding:1px 5px;border-radius:4px;margin-right:6px}
+.lane.vf{background:#1b3a2c;color:var(--ok)}.lane.v{background:#17324f;color:var(--acc)}.lane.f{background:#3d3417;color:var(--warn)}
+.sc{float:right;font-family:var(--mono);color:var(--mut)}
+.ev{align-self:flex-start;width:88%;font-size:12px;color:var(--mut);background:#0d1117;border:1px solid var(--border);border-radius:12px;padding:9px 12px}
+.ev b{color:var(--fg)}.ev .row{padding:3px 0;border-bottom:1px dashed #1a212d}
+.ev .row:last-child{border:none}
+.ev a{color:var(--acc);text-decoration:none}
+#bar{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border)}
+#q{flex:1}
+.caret{display:inline-block;width:7px;height:15px;background:var(--acc);margin-left:2px;vertical-align:-2px;animation:blink .8s steps(1) infinite;border-radius:1px}
+@keyframes blink{50%{opacity:0}}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--tool);border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sr{padding:6px;border-radius:8px;cursor:pointer;border:1px solid transparent;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.sr.on{background:#1c3457;border-color:var(--acc)}.sr:hover{border-color:var(--acc)}
+.sess{padding:5px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess.on{background:#152a44;border-color:var(--acc)}.sess:hover{border-color:var(--acc)}
+.lg{border-top:1px solid var(--border);margin-top:6px;padding-top:8px}
+.lg .r{font-size:12px;padding:6px;border-bottom:1px solid var(--border)}
+.lg .r button{font-size:11px;padding:2px 8px;margin-top:3px}
+.pending{color:var(--warn)}.tag{color:var(--acc);font-weight:600}
+hr{border:none;border-top:1px solid var(--border);margin:2px 0}
+.badge{font-size:10.5px;padding:1px 7px;border-radius:99px;background:#1c3457;color:var(--acc)}
+</style>
+</head>
+<body>
+<aside>
+  <h1>Search Bot</h1>
+  <div class="small">grounded RAG · LFM local · citations only</div>
+  <button onclick="newChat()" style="background:#1c3457">＋ New chat</button>
+  <div><b class="small">Chat history</b><div id="sessions"></div></div>
+  <hr>
+  <div><b class="small">Corpus</b><div id="searches"></div></div>
+  <div style="display:flex;gap:6px"><input id="newslug" placeholder="new folder" style="flex:1">
+  <button onclick="createSearch()">create</button></div>
+  <div id="jobline" class="small"></div>
+  <div class="lg"><b class="small">Find papers · LibGen · Anna's Archive · PubMed · arXiv</b>
+    <div style="display:flex;gap:6px;margin-top:6px"><input id="lq" placeholder="topic…" style="flex:1">
+    <button onclick="libgenSearch()">go</button></div>
+    <div id="lres"></div>
+  </div>
+</aside>
+<main>
+  <div id="chat"></div>
+  <div id="bar">
+    <input id="q" placeholder="Ask the literature… (agent will search & fetch if evidence is thin)"
+           onkeydown="if(event.key=='Enter')ask()">
+    <button id="askbtn" onclick="ask()">Ask</button>
+  </div>
+</main>
+<script>
+let slug = localStorage.getItem('sb_slug') || 'all';
+let session = localStorage.getItem('sb_session') || null;
+const $=id=>document.getElementById(id);
+async function j(u,o){const r=await fetch(u,o);return r.json()}
+function newSessionId(){return 'web-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+
+const PHASE={
+  start:{ic:'🧠',t:'plan'}, retrieve:{ic:'🔎',t:'hybrid retrieval (vec+BM25+RRF)'},
+  gate:{ic:'🚦',t:'evidence gate'}, acquire_plan:{ic:'🗺️',t:'acquire plan'},
+  acquire_target:{ic:'📁',t:'new topic folder'}, libgen_search:{ic:'🔍',t:'catalogue search'},
+  libgen_results:{ic:'📑',t:'catalogue hits'}, libgen_search_error:{ic:'⚠️',t:'catalogue error'},
+  skip_dup:{ic:'♻️',t:'already in corpus'}, download:{ic:'⬇️',t:'download PDF'},
+  download_done:{ic:'✅',t:'saved'}, download_error:{ic:'❌',t:'download failed'},
+  index:{ic:'📇',t:'chunk + embed + FTS'}, index_done:{ic:'📇',t:'indexed'},
+  merge:{ic:'🧵',t:'per-term evidence merge'}, merge_extra:{ic:'🧵',t:'merge'},
+  prompt:{ic:'🧩',t:'prompt assembly'}, generate:{ic:'⚡',t:'LFM generating'},
+  delta:{ic:'✍️',t:''}, reset:{ic:'🔄',t:'generation retry'},
+  generate_done:{ic:'✅',t:'generation finished'},
+  memory:{ic:'🗂️',t:'memory'}, done:{ic:'🏁',t:'done'}, error:{ic:'❌',t:'error'}};
+
+function traceBox(){
+  const w=document.createElement('div');w.className='trace';
+  w.innerHTML=`<div class="thead" onclick="this.parentNode.classList.toggle('closed')">
+    <span class="spin"></span><span class="st">working…</span><span class="tm"></span><span class="chev">▾</span>
+  </div><div class="tbody"></div>`;
+  $('chat').appendChild(w);scrolled();return w;
+}
+function addStep(w,ev){
+  // SECURITY: all values interpolated into innerHTML below pass through esc()
+  // (& < > " ' escaped); indices like ev.hits[i] come from our own JSON API.
+  // This UI is served only on 127.0.0.1 by webserver.py.
+  const [st,tm,chev]=w.querySelectorAll('.thead .st,.tm,.chev');
+  const tb=w.querySelector('.tbody');
+  if(ev.phase==='delta'){return}
+  if(ev.phase==='done'){st.textContent='done';tm.textContent=(ev.ms||w._t0?Date.now()-w._t0:0)+'ms · '+ev.count+' steps';
+    w.querySelector('.spin')?.remove();w.classList.add('closed');return;}
+  w._t0=w._t0||Date.now();tm.textContent=(Date.now()-w._t0)+'ms';
+  st.textContent=(PHASE[ev.phase]?.t||ev.phase);
+  const p=PHASE[ev.phase]||{ic:'•'};
+  const d=document.createElement('div');d.className='step';
+  let body=`<div class="lbl ${ev.phase}">${ev.phase}</div>`;
+  body+=`<div class="txt">${esc(ev.msg||'')}</div>`;
+  if(ev.hits&&ev.hits.length)body+='<ul class="hitlist">'+ev.hits.map(h=>
+    `<li><span class="lane ${h.lanes==='vec+fts'?'vf':h.lanes==='vec'?'v':'f'}">${h.lanes}</span><b>${esc(h.title)}</b> <span class="small">${esc(h.year||'')} · ${esc(h.slug)}</span><span class="sc">${h.score}</span></li>`).join('')+'</ul>';
+  if(ev.added&&ev.added.length)body+='<ul class="hitlist">'+ev.added.map(h=>
+    `<li><b>${esc(h.title)}</b> <span class="small">${esc(h.slug)}</span><span class="sc">${h.score}</span></li>`).join('')+'</ul>';
+  d.innerHTML=`<div class="ic">${p.ic}</div><div class="body">${body}</div>`;
+  tb.appendChild(d);tb.scrollTop=1e9;scrolled();
+}
+function scrolled(){const c=$('chat');c.scrollTop=1e9}
+
+/* ---------- streaming answer bubble ---------- */
+function answerBox(){
+  const d=document.createElement('div');d.className='msg assistant';d.textContent='';
+  const car=document.createElement('span');car.className='caret';d.appendChild(car);
+  $('chat').appendChild(d);scrolled();
+  return {el:d,car,text:''};
+}
+function streamTo(box,txt){
+  box.text+=txt;box.el.textContent=box.text;box.el.appendChild(box.car);scrolled();
+}
+
+async function poll(rid,box,w){
+  let since=0,finished=null;
+  while(true){
+    let r;try{r=await j('/api/trace?id='+rid+'&since='+since)}catch(e){await new Promise(s=>setTimeout(s,1500));continue}
+    if(r.error){add('assistant','error: '+r.error);return null}
+    for(const ev of r.events){
+      if(ev.phase==='delta'&&box)streamTo(box,ev.text||'');
+      else if(ev.phase==='reset'&&box){box.text='';box.el.textContent='';box.el.appendChild(box.car);addStep(w,ev);}
+      else addStep(w,ev);
+    }
+    since=r.next;
+    if(r.done){finished=r.result;break}
+    await new Promise(s=>setTimeout(s,120));
+  }
+  return finished;
+}
+
+async function ask(){
+  const q=$('q').value.trim();if(!q)return;
+  if(!session){session=newSessionId();localStorage.setItem('sb_session',session);refreshSessions()}
+  $('q').value='';$('askbtn').disabled=true;
+  add('user',q);
+  const w=traceBox();
+  const box=answerBox();
+  let rid;
+  try{rid=(await j('/api/ask',{method:'POST',body:JSON.stringify({slug:slug=='all'?null:slug,question:q,session_id:session})})).run_id}
+  catch(e){w.remove();box.el.remove();add('assistant','error: '+e);$('askbtn').disabled=false;return}
+  const r=await poll(rid,box,w);
+  if(!r){w.remove();box.el.remove();$('askbtn').disabled=false;return}
+  box.car.remove();
+  if(r.error){box.el.textContent='⚠️ '+r.error}
+  else if(!(r.answer||'').trim()){box.el.textContent='(model returned nothing — try rephrasing)'}
+  else box.el.textContent=r.answer;
+  if(r.evidence&&r.evidence.length)sourcesBlock(r.evidence);
+  const acq=(r.rounds||[]).reduce((a,x)=>a+(x.acquired||0),0);
+  if(acq)add('sysline',`📥 ${acq} new paper(s) acquired & indexed into the corpus`);
+  refresh();refreshSessions();
+  $('askbtn').disabled=false;$('q').focus();
+}
+
+function sourcesBlock(refs){
+  const ev=document.createElement('div');ev.className='ev';
+  ev.innerHTML='<b>Sources</b>'+refs.map((e,i)=>{
+    const ident=e.pmcid||e.doi||'';
+    const link=e.pmcid?`<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/${esc(e.pmcid)}/" target="_blank">PMC</a>`
+      :e.doi?`<a href="https://doi.org/${esc(e.doi)}" target="_blank">DOI</a>`:'';
+    return `<div class="row">[E${i+1}] <b>${esc(e.title||e.file)}</b> <span class="small">${esc(e.year||'')} ${esc(e.journal||'')} ${esc(ident)}</span> ${link} <span class="badge">${esc(e.slug)}</span></div>`}).join('');
+  $('chat').appendChild(ev);scrolled();
+}
+function add(cls,txt){
+  const d=document.createElement('div');d.className=(cls=='sysline'?'sysline':'msg '+cls);
+  d.textContent=txt;$('chat').appendChild(d);scrolled();return d;
+}
+
+/* ---------- sessions / corpus ---------- */
+async function refreshSessions(){
+  const rows=await j('/api/sessions');
+  $('sessions').innerHTML=rows.map(s=>`<div class="sess ${s.id==session?'on':''}" onclick="openSession('${esc(s.id)}','${esc(s.slug||'')}')" title="${esc(s.id)}">${esc(s.title||(s.slug||'?'))} <span class="small">${s.turns}t · ${esc(s.slug||'all')}</span></div>`).join('')||'<div class="small">no chats yet</div>';
+}
+async function openSession(id,s){
+  session=id;localStorage.setItem('sb_session',id);
+  if(s&&s!=='all'){slug=s;localStorage.setItem('sb_slug',s)}
+  $('chat').innerHTML='';
+  const hist=await j('/api/history?session='+encodeURIComponent(id));
+  for(const t of hist){
+    if(t.role==='user')add('user',t.text);
+    else{add('assistant',t.text);
+      let refs=[];try{refs=JSON.parse(t.refs_json||'[]')}catch(e){}
+      if(refs.length)sourcesBlock(refs);}
+  }
+  if(!hist.length)add('sysline','empty chat');
+  refresh();refreshSessions();
+}
+function newChat(){session=newSessionId();localStorage.setItem('sb_session',session);$('chat').innerHTML='';
+  add('sysline','new chat — scope: '+(slug=='all'?'ALL folders (every source)':slug));refreshSessions()}
+async function refresh(){
+  const rows=await j('/api/searches');
+  $('searches').innerHTML=
+    `<div class="sr ${slug=='all'?'on':''}" onclick="pick('all')"><span>🌐 all folders</span></div>`+
+    rows.map(r=>`<div class="sr ${r.slug==slug?'on':''}" onclick="pick('${esc(r.slug)}')"><span>${esc(r.slug)} <span class="small">· ${r.docs}d/${r.chunks}c</span></span></div>`).join('');
+  const jobs=await j('/api/status'+(slug&&slug!='all'?'?slug='+slug:''));
+  const jb=jobs[0];
+  $('jobline').innerHTML=jb?`job: <b class="${jb.state=='error'?'pending':''}">${jb.state}</b> ${esc((jb.info||'').slice(0,80))}`:'';
+  if(jb&&['queued','running','indexing'].includes(jb.state))setTimeout(refresh,3000);
+}
+function pick(s){slug=s;localStorage.setItem('sb_slug',s);refresh();
+  add('sysline',s=='all'?'scope: all indexed folders — every relevant source is retrieved':'scope: “'+s+'” only')}
+async function createSearch(){
+  const s=$('newslug').value.trim();if(!s)return;
+  await j('/api/searches',{method:'POST',body:JSON.stringify({slug:s})});
+  slug=s;$('newslug').value='';localStorage.setItem('sb_slug',s);refresh();
+  add('sysline',`created search/${s} — drop PDFs into search/${s}/pdf/, it indexes automatically`);
+}
+async function libgenSearch(){
+  const q=$('lq').value.trim();if(!q)return;
+  $('lres').innerHTML='<div class="small pending">catalogue search…</div>';
+  const r=await j('/api/libgen/search',{method:'POST',body:JSON.stringify({query:q,limit:8})});
+  const items=r.results||[];
+  if(!items.length){$('lres').innerHTML=`<div class="small">${esc(JSON.stringify(r).slice(0,160))}</div>`;return}
+  window._litems=items;
+  $('lres').innerHTML=items.map((it,i)=>`<div class="r">${esc((it.title||'').slice(0,84))}<br>
+    <span class="small">${esc(it.year||'')} · ${esc(it.md5?it.md5.slice(0,10)+'…':'')}</span>
+    ${it.md5?`<button onclick="bringTo(${i})">bring${slug!='all'?' → '+esc(slug):''}</button>`:''}</div>`).join('');
+}
+async function bringTo(i){
+  const it=window._litems[i];
+  const target=slug!='all'?slug:((it.title||'general').split(' ')[0].toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,20)||'general');
+  await j('/api/libgen/get',{method:'POST',body:JSON.stringify({slug:target,md5:it.md5})});
+  add('sysline','⬇️ downloading into '+target+'/pdf — indexing in background');refresh();
+}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+
+if(!session){session=newSessionId();localStorage.setItem('sb_session',session)}
+add('sysline','default scope: ALL folders — every indexed source relevant to the question is used. Pick a folder in the sidebar to restrict.');
+refreshSessions().then(()=>refresh());
+setInterval(refreshSessions,20000);
+</script>
+</body>
+</html>
