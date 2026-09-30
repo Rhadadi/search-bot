@@ -30,7 +30,7 @@ the machine except outbound catalogue/PDF lookups.
               chat endpoint ◄───────┘          └──► embeddings :8082
     any OpenAI-compatible server       (embeddinggemma-300M Q8, mean pooling)
      (you choose, local or hosted)              │
-                       SQLite data/searchbot.db│ chunks + FTS5(BM25) + vec0(768d)
+                       SQLite data/searchbot.db│ chunks + FTS5(BM25) + vec0(embedder dim)
                                               │
                                  libgen-mcp ◄─┘  (LibGen + Anna's Archive +
                                                arXiv / Crossref / PubMed / EuropePMC)
@@ -58,6 +58,8 @@ different embedder size works too (re-index after switching).
    Disable per-call with `acquire:false`.
 2. **Hybrid retrieval** (`searchbot/retriever.py`) — vec0 KNN (query wrapped in the
    embeddinggemma instruction prefix) + FTS5 BM25 → **RRF fusion** → top 8 chunks.
+   Year bounds, recency and citation weighting are optional on top of that
+   (see [Ranking signals](#ranking-signals)).
 3. **Memory assembly** (`searchbot/memory.py`) — session summary + facts ledger +
    the last 8 raw turns injected as system blocks, so the model never has to
    "remember" anything.
@@ -65,6 +67,44 @@ different embedder size works too (re-index after switching).
    lines are extracted into a per-topic facts table, then stripped from the display.
 5. **Compaction** — roughly every 12 turns, older turns are summarized into the
    session summary.
+
+## Ranking signals
+
+RRF alone is relevance-only. Retrieval accepts four optional signals on top of it
+— per request in the web API and the MCP `ask` tool, or as flags in the CLI:
+
+| signal | what it does |
+|---|---|
+| `year_after` / `year_before` | drop candidates outside a publication-year range (a doc with no recoverable year is excluded when a bound is set, rather than passing as "recent enough") |
+| `recency` | additive weight: `0.5 ** (age / SEARCHBOT_RECENCY_HALF_LIFE)` |
+| `citations` | additive weight: OpenAlex `cited_by_count`, log-scaled against the strongest candidate |
+
+Both weights default to `0.0`, so an untouched query stays pure RRF and the
+ordering is exactly what it was.
+
+```bash
+.venv/bin/python scripts/ask.py ephedra --after 2015 --recency 0.2
+.venv/bin/python scripts/ask.py ephedra --citations 0.3
+
+curl -s 127.0.0.1:8181/api/ask -H 'Content-Type: application/json' \
+     -d '{"slug":"ephedra","question":"…","year_after":2015,"recency":0.2}'
+```
+
+`citations` needs counts in the database, so backfill once per corpus (and
+refresh occasionally — counts drift):
+
+```bash
+.venv/bin/python scripts/citations.py --dry-run     # coverage report, no requests
+.venv/bin/python scripts/citations.py ephedra       # one folder
+.venv/bin/python scripts/citations.py --all-again   # re-fetch everything
+```
+
+That writes `docs.citations` (and `docs.year`, when the metadata sidecar left it
+blank) from OpenAlex: 40 identifiers per request, DOI first and PMID for whatever
+DOI missed. Works OpenAlex does not know are stamped `openalex:not-found` so a
+re-run does not re-query the same dead ends, while a failed request leaves rows
+untouched and retries next time. Set `SEARCHBOT_MAILTO` to use OpenAlex's polite
+pool; without it the anonymous rate limit applies.
 
 ## Agentic trace UI
 
@@ -96,16 +136,19 @@ searchbot/            the engine (importable package)
   db.py               schema: docs / chunks / fts5 / vec0 / sessions / turns / facts / jobs
   llm.py              chat client + embedder client (batched, retrying)
   indexer.py          PDF & XML extraction, chunking, embedding
-  retriever.py        hybrid vec + BM25, RRF fusion
+  retriever.py        hybrid vec + BM25, RRF fusion, year/recency/citation ranking
   memory.py           summary compaction, facts ledger, memory block
   pipeline.py         the answer loop (evidence → grounded answer)
   agent.py            the gate/acquire loop
+  citations.py        OpenAlex citation-count backfill
   libgen.py           stdio client for libgen-mcp + table parser + term widener
   trace.py            background runs and the event stream
   mcp_server.py       stdio MCP server (JSON-RPC 2.0)
   webserver.py        127.0.0.1:8181 JSON API + static UI
 web/index.html        chat UI with evidence panel
-scripts/              index.py, ask.py, start_servers.sh
+scripts/              index.py, ask.py, citations.py, start_servers.sh
+tests/                stdlib unittest suite — no model server, no corpus, no network
+.github/workflows/    CI: the suite on 3.11 / 3.12 / 3.13
 searchbot_mcp.py      standalone MCP entry point for clients that scrub cwd/PYTHONPATH
 web_run.py            starts the web UI
 ```
@@ -117,7 +160,7 @@ in `models/`, the `bin/libgen-mcp` binary, and all runtime state under `data/`.
 
 ```bash
 python3.12 -m venv .venv
-.venv/bin/pip install numpy sqlite-vec requests
+.venv/bin/pip install -r requirements.txt
 
 # 1. point the bot at a chat model — any OpenAI-compatible server works.
 #    e.g. llama.cpp:  llama server -m <your-model> --port 8080 --host 127.0.0.1
@@ -156,8 +199,14 @@ All via environment variables, no code edits needed:
 | `SEARCHBOT_EMBED_URL` | `http://127.0.0.1:8082/v1` | OpenAI-compatible embeddings endpoint |
 | `SEARCHBOT_EMBED_MODEL` | *(omitted from request)* | model name for multi-model embed servers |
 | `SEARCHBOT_QUERY_INSTRUCT` | embeddinggemma `Instruct: …\nQuery: ` | retrieval prefix added to queries only |
+| `SEARCHBOT_RECENCY_WEIGHT` | `0.0` | default recency boost for every query |
+| `SEARCHBOT_RECENCY_HALF_LIFE` | `10` | years for a paper's recency score to halve |
+| `SEARCHBOT_CITATION_WEIGHT` | `0.0` | default citation-count boost for every query |
+| `SEARCHBOT_OPENALEX_URL` | `https://api.openalex.org/works` | citation-count source |
+| `SEARCHBOT_OPENALEX_BATCH` | `40` | identifiers per request |
+| `SEARCHBOT_MAILTO` | *(none)* | contact for OpenAlex's polite pool (higher rate limit) |
 | `SEARCHBOT_LIBGEN_BIN` | `bin/libgen-mcp` | path to the libgen-mcp binary |
-| `SEARCHBOT_SOCKS` | *(none)* | SOCKS proxy for catalogue traffic only |
+| `SEARCHBOT_SOCKS` | `socks5h://127.0.0.1:1090` | proxy for catalogue traffic only; `export SEARCHBOT_SOCKS=` to go direct |
 | `SEARCHBOT_CHAT_PORT` | `8080` | health-check port used by `start_servers.sh` |
 | `SEARCHBOT_LLAMA_BIN` | `~/.local/bin/llama` | llama.cpp binary used by `start_servers.sh` |
 | `SEARCHBOT_EMBED_GGUF` | `models/embeddinggemma-300M-Q8_0.gguf` | weights used by `start_servers.sh` |
@@ -197,6 +246,20 @@ the project root with a virtualenv that has the deps installed; it exposes
 `list_searches`, `add_search`, `ask`, `index_status`, `libgen_search`,
 `libgen_download`.
 
+## Development
+
+```bash
+.venv/bin/python -m unittest discover -s tests -t tests
+```
+
+The suite builds its own throwaway database in a temp directory, swaps the
+embedder for a deterministic token-hash vectoriser and stubs `requests` wherever
+an HTTP client is involved — so it needs no model server, no corpus and no
+network. Coverage: the control-token scrubber and chat retry ladder, the
+vec+BM25+RRF fusion and every ranking option, the acquire gate's term coverage,
+the OpenAlex backfill (lanes, batching, dead-end stamping), schema migration, the
+HTTP API's routing and trace, and the MCP tool schemas plus JSON-RPC loop.
+
 ## Notes from building this
 
 Measured with the reference setup (llama.cpp chat + embeddinggemma-300M-Q8_0):
@@ -230,3 +293,10 @@ Measured with the reference setup (llama.cpp chat + embeddinggemma-300M-Q8_0):
   is a no-op for well-behaved APIs.
 - Answer quality tracks the corpus: expect a weak answer when nothing indexed has
   anything to say.
+
+## License
+
+GNU GPL-3.0-only — see [LICENSE](LICENSE). Every source file carries the matching
+SPDX header. Downloaded papers, model weights and any other material you put under
+`search/` or `models/` stay outside the repository and outside this license; you
+are responsible for their terms.

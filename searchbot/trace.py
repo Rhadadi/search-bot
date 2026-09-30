@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 """In-memory run traces so the UI can show the agent thinking live
 (Cursor/Windurf-style): every phase emits a typed event; clients
 long-poll /api/trace?id=&since=n and get new events immediately."""

@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 """Corpus indexing: extract text from PDFs/XML in search/{slug}/, chunk, embed, store."""
 import csv
 import hashlib

@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# search-bot — grounded scientific RAG engine
+# Copyright (C) 2026 raaaas
+# This program comes with ABSOLUTELY NO WARRANTY; it is free software, and you
+# are welcome to redistribute it under GNU GPL-3.0-only terms. See LICENSE.
+
 # Start the local embedder the bot needs. The chat server is yours to run and choose.
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
