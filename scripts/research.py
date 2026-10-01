@@ -11,7 +11,8 @@
         --query "knowing how intellectualism Stanley Williamson" --target sep:knowledge-how --target gutenberg:5827
     .venv/bin/python scripts/research.py epistemology "..." --no-acquire --digest
 
-Targets: doi:10.xxxx/yyy, gutenberg:NUMBER, sep:ENTRY-NAME, url:https://... (a known open copy).
+Targets: doi:10.xxxx/yyy, gutenberg:NUMBER, sep:ENTRY-NAME, ia:IDENTIFIER (Internet Archive, public domain),
+url:https://... (a known open copy); details may follow, e.g. gutenberg:5827|year=1912.
 """
 import argparse
 import json
@@ -26,7 +27,7 @@ def target(s):
     """doi:..., gutenberg:5827, sep:entry, url:https://...; optional |year=1912|title=...|authors=A; B"""
     head, *extra = s.split("|")
     kind, _, value = head.partition(":")
-    if kind not in ("doi", "gutenberg", "sep", "url") or not value:
+    if kind not in ("doi", "gutenberg", "sep", "ia", "url") or not value:
         raise argparse.ArgumentTypeError(f"bad target {s!r}")
     t = {kind: value}
     for e in extra:

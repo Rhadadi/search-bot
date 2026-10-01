@@ -16,8 +16,8 @@ Sources, all of them public domain, open access, or free to read online:
   crossref   no full texts; used to check a DOI's details, and for works with a Creative
              Commons licence and a full-text link
 
-A request can also name targets explicitly (a DOI, a Gutenberg book number, an SEP entry, or a
-URL the caller knows to be an open copy), which is how a researcher asks for a specific work.
+A request can also name targets explicitly (a DOI, a Gutenberg book number, an SEP entry, an
+Internet Archive item, or a URL the caller knows to be an open copy), which is how a researcher asks for a specific work.
 A DOI with no open copy is not downloaded; its catalogue record is returned instead, so the
 work can still be cited from its verified details.
 
@@ -239,13 +239,17 @@ def resolve_target(t):
 
 
 def _resolve(t):
-    """A target is {"doi"|"gutenberg"|"sep"|"url": ...} (optionally with title/authors/year/kind/license).
+    """A target is {"doi"|"gutenberg"|"sep"|"ia"|"url": ...} (optionally with title/authors/year/kind/license).
     Returns (candidate to download or None, catalogue record or None)."""
     if t.get("sep"):
         return {"source": "sep", "sep": t["sep"], "title": t.get("title", t["sep"]), "url": f"{SEP}/entries/{t['sep']}/",
                 "kind": "html", "license": "free-to-read"}, None
     if t.get("gutenberg"):
         return gutenberg_record(t["gutenberg"]), None
+    if t.get("ia"):  # an Internet Archive item, read through its OCR text; the caller vouches it is public domain
+        ident = t["ia"]
+        return {"source": "ia", "title": t.get("title", ident), "url": f"https://archive.org/download/{ident}/{ident}_djvu.txt",
+                "kind": "txt", "link": f"https://archive.org/details/{ident}", "license": t.get("license", "public-domain")}, None
     if t.get("url"):
         kind = t.get("kind") or ("pdf" if t["url"].lower().endswith(".pdf") else "html")
         return {"source": "url", "title": t.get("title", ""), "authors": t.get("authors", []), "year": str(t.get("year", "")),

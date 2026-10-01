@@ -14,7 +14,8 @@ version-tagged, so entries are dated.
   it), at most `max_per_work` passages per work, and a list of the works used. It
   never calls the language model. `queries` adds further phrasings (retrieved and
   merged at each passage's best score); `targets` names works to fetch
-  (`{doi}`, `{gutenberg}`, `{sep}`, `{url}`). A DOI with no open copy comes back
+  (`{doi}`, `{gutenberg}`, `{sep}`, `{ia}` for an Internet Archive item read through
+  its OCR text, `{url}`). A DOI with no open copy comes back
   as a catalogue record, so the work can still be cited from verified details.
 - **Open-access acquisition** (`searchbot/oa.py`) — used by `research_section`:
   Stanford Encyclopedia of Philosophy entries (cited by their archive edition),

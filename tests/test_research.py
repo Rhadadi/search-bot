@@ -245,6 +245,12 @@ class OpenAccessTest(NoModel, support.TempCase):
         self.assertEqual(got, 0)
         self.assertEqual(cat[0]["title"], "Knowing How")
 
+    def test_internet_archive_target_reads_the_ocr_text(self):
+        cand, cat = oa._resolve({"ia": "lecturesessaysby02clif", "title": "Lectures and Essays"})
+        self.assertIsNone(cat)
+        self.assertEqual(cand["url"], "https://archive.org/download/lecturesessaysby02clif/lecturesessaysby02clif_djvu.txt")
+        self.assertEqual((cand["kind"], cand["license"]), ("txt", "public-domain"))
+
 
 class DispatchResearchTest(NoModel, support.TempCase):
     def test_mcp_routes_research_section(self):
