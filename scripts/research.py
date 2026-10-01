@@ -20,14 +20,14 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-from searchbot import agent, db, llm  # noqa: E402
+from searchbot import oa, agent, db, llm  # noqa: E402
 
 
 def target(s):
     """doi:..., gutenberg:5827, sep:entry, url:https://...; optional |year=1912|title=...|authors=A; B"""
     head, *extra = s.split("|")
     kind, _, value = head.partition(":")
-    if kind not in ("doi", "gutenberg", "sep", "ia", "url") or not value:
+    if kind not in ("doi", "gutenberg", "sep", "ia", "openalex", "url") or not value:
         raise argparse.ArgumentTypeError(f"bad target {s!r}")
     t = {kind: value}
     for e in extra:
@@ -45,12 +45,14 @@ def main():
     ap.add_argument("--k", type=int, default=agent.RESEARCH_K)
     ap.add_argument("--max-per-work", type=int, default=agent.MAX_PER_WORK)
     ap.add_argument("--no-acquire", action="store_true")
+    ap.add_argument("--sources", default=",".join(oa.DEFAULT_SOURCES),
+                    help=f"open-access sources to search, comma-separated, from {', '.join(oa.SEARCHERS)}")
     ap.add_argument("--digest", action="store_true", help="print a readable digest instead of JSON")
     a = ap.parse_args()
     c = db.connect()
     db.init(c, llm.embed_dim())
     res = agent.research_section(c, a.slug, a.question, queries=a.query, k=a.k, acquire=not a.no_acquire,
-                                 targets=a.target, max_per_work=a.max_per_work,
+                                 targets=a.target, max_per_work=a.max_per_work, sources=a.sources.split(","),
                                  log=lambda m: print(m, file=sys.stderr))
     if not a.digest:
         print(json.dumps(res, ensure_ascii=False, indent=1))

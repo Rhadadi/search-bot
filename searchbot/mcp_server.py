@@ -48,7 +48,7 @@ TOOLS = [
          "queries": {"type": "array", "items": {"type": "string"}, "description": "further phrasings to retrieve with"},
          "acquire": {"type": "boolean", "description": "fetch open-access works when evidence is thin (default true)"},
          "targets": {"type": "array", "items": {"type": "object"}, "description":
-                     "works to fetch: {doi} | {gutenberg: number} | {sep: entry name} | {ia: identifier} | {url, title, authors, year, license}"},
+                     "works to fetch: {doi} | {gutenberg: number} | {sep: entry name} | {ia: identifier} | {openalex: DOI} | {url, title, authors, year, license}"},
          "k": {"type": "integer", "description": "passages to return (default 15)"},
          "max_per_work": {"type": "integer", "description": "passages from any one work (default 3)"},
          "year_after": {"type": "integer"}, "year_before": {"type": "integer"},

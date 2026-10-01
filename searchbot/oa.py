@@ -13,6 +13,7 @@ Sources, all of them public domain, open access, or free to read online:
   arxiv      arXiv preprints
   europepmc  Europe PMC open-access full texts
   zenodo     Zenodo records with open files
+  openalex   open-access articles with a direct PDF (needs SEARCHBOT_OPENALEX_KEY, a free key)
   crossref   no full texts; used to check a DOI's details, and for works with a Creative
              Commons licence and a full-text link
 
@@ -202,6 +203,42 @@ def zenodo_search(query, n=5):
     return out
 
 
+def openalex_search(query, n=5):
+    """Open-access works from OpenAlex that have a direct PDF. Needs SEARCHBOT_OPENALEX_KEY (a free key): the
+    shared, keyless allowance is often used up."""
+    params = {"search": query, "filter": "is_oa:true,has_doi:true", "per_page": n,
+              "select": "id,doi,title,publication_year,authorships,primary_location,best_oa_location,abstract_inverted_index,type"}
+    if config.OPENALEX_API_KEY:
+        params["api_key"] = config.OPENALEX_API_KEY
+    r = _get(config.OPENALEX_URL, params=params)
+    if r.status_code != 200:
+        return []
+    return [c for c in (_openalex_cand(w) for w in r.json().get("results", [])) if c]
+
+
+def _openalex_cand(w):
+    """An OpenAlex work as a candidate to fetch, or None when it has no direct open PDF."""
+    loc = w.get("best_oa_location") or {}
+    if not loc.get("pdf_url"):
+        return None
+    inv = w.get("abstract_inverted_index") or {}
+    words = sorted((i, t) for t, idx in inv.items() for i in idx)
+    names = [((a.get("author") or {}).get("display_name") or "").strip() for a in w.get("authorships", [])]
+    return {"source": "openalex", "title": w.get("title") or "", "abstract": " ".join(t for _, t in words),
+            "authors": [f"{n.split()[-1]}, {' '.join(n.split()[:-1])}" if " " in n else n for n in names if n],
+            "year": str(w.get("publication_year") or ""), "doi": (w.get("doi") or "").replace("https://doi.org/", ""),
+            "journal": ((w.get("primary_location") or {}).get("source") or {}).get("display_name", "") or "",
+            "url": loc["pdf_url"], "kind": "pdf", "link": loc.get("landing_page_url") or w.get("doi") or w.get("id"),
+            "license": loc.get("license") or "open-access"}
+
+
+def openalex_work(doi):
+    """One work by DOI, as a candidate to fetch (None when OpenAlex knows no open PDF for it)."""
+    params = {"api_key": config.OPENALEX_API_KEY} if config.OPENALEX_API_KEY else {}
+    r = _get(f"{config.OPENALEX_URL}/doi:{doi}", params=params)
+    return _openalex_cand(r.json()) if r.status_code == 200 else None
+
+
 def crossref_work(doi):
     """A DOI's details from Crossref, and a full-text link when the work carries a Creative Commons licence."""
     r = _get(f"https://api.crossref.org/works/{urllib.parse.quote(doi)}")
@@ -223,7 +260,7 @@ def crossref_work(doi):
 
 
 SEARCHERS = {"sep": sep_search, "gutenberg": gutenberg_search, "arxiv": arxiv_search,
-             "europepmc": europepmc_search, "zenodo": zenodo_search}
+             "europepmc": europepmc_search, "zenodo": zenodo_search, "openalex": openalex_search}
 DEFAULT_SOURCES = ("sep", "arxiv", "europepmc", "zenodo")
 
 
@@ -246,6 +283,9 @@ def _resolve(t):
                 "kind": "html", "license": "free-to-read"}, None
     if t.get("gutenberg"):
         return gutenberg_record(t["gutenberg"]), None
+    if t.get("openalex"):  # a DOI whose open copy OpenAlex knows (a repository or publisher PDF)
+        cand = openalex_work(t["openalex"])
+        return (cand, None) if cand else (None, crossref_work(t["openalex"]))
     if t.get("ia"):  # an Internet Archive item, read through its OCR text; the caller vouches it is public domain
         ident = t["ia"]
         return {"source": "ia", "title": t.get("title", ident), "url": f"https://archive.org/download/{ident}/{ident}_djvu.txt",

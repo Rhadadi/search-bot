@@ -4,6 +4,15 @@ Change history for search-bot, newest first. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project is not
 version-tagged, so entries are dated.
 
+## 2026-10-01 — OpenAlex as an open-access source
+
+### Added
+- **OpenAlex** (`oa.openalex_search`, `oa.openalex_work`) — open-access articles that
+  have a direct PDF, found by search or named as a `{openalex: DOI}` target. A DOI
+  OpenAlex knows no open PDF for falls back to its Crossref catalogue record. Uses the
+  free key in `SEARCHBOT_OPENALEX_KEY`; the shared keyless allowance is often used up.
+- `scripts/research.py --sources` chooses which open-access sources to search.
+
 ## 2026-10-01 — evidence-only research, open-access acquisition, books
 
 ### Added

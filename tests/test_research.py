@@ -176,10 +176,11 @@ class FakeResponse:
 
 class FakeSession:
     def __init__(self, routes):
-        self.routes, self.headers, self.seen = routes, {}, []
+        self.routes, self.headers, self.seen, self.params = routes, {}, [], []
 
     def get(self, url, **kw):
         self.seen.append(url)
+        self.params.append(kw.get("params") or {})
         for prefix, resp in self.routes.items():
             if url.startswith(prefix):
                 return resp
@@ -250,6 +251,43 @@ class OpenAccessTest(NoModel, support.TempCase):
         self.assertIsNone(cat)
         self.assertEqual(cand["url"], "https://archive.org/download/lecturesessaysby02clif/lecturesessaysby02clif_djvu.txt")
         self.assertEqual((cand["kind"], cand["license"]), ("txt", "public-domain"))
+
+    OPENALEX_WORK = {"id": "https://openalex.org/W1", "doi": "https://doi.org/10.1/x", "title": "Ought to Believe",
+                     "publication_year": 2008, "authorships": [{"author": {"display_name": "Matthew Chrisman"}}],
+                     "primary_location": {"source": {"display_name": "The Journal of Philosophy"}},
+                     "best_oa_location": {"pdf_url": "https://repo.example/ought.pdf", "landing_page_url": "https://repo.example/ought",
+                                          "license": None},
+                     "abstract_inverted_index": {"Doxastic": [0], "oughts": [1]}}
+
+    def test_openalex_target_fetches_the_open_pdf(self):
+        oa._session = FakeSession({"https://api.openalex.org/works/doi:10.1/x": FakeResponse(data=self.OPENALEX_WORK)})
+        cand, cat = oa._resolve({"openalex": "10.1/x"})
+        self.assertIsNone(cat)
+        self.assertEqual((cand["url"], cand["kind"], cand["link"]), ("https://repo.example/ought.pdf", "pdf", "https://repo.example/ought"))
+        self.assertEqual((cand["authors"], cand["year"], cand["doi"]), (["Chrisman, Matthew"], "2008", "10.1/x"))
+        self.assertEqual((cand["journal"], cand["license"], cand["abstract"]), ("The Journal of Philosophy", "open-access", "Doxastic oughts"))
+
+    def test_openalex_target_without_pdf_falls_back_to_the_catalogue(self):
+        work = dict(self.OPENALEX_WORK, best_oa_location={"landing_page_url": "https://repo.example/ought"})
+        data = {"message": {"DOI": "10.1/x", "title": ["Ought to Believe"], "issued": {"date-parts": [[2008]]}}}
+        oa._session = FakeSession({"https://api.openalex.org/works/doi:10.1/x": FakeResponse(data=work),
+                                   "https://api.crossref.org": FakeResponse(data=data)})
+        cand, cat = oa._resolve({"openalex": "10.1/x"})
+        self.assertIsNone(cand)
+        self.assertEqual((cat["title"], cat["license"]), ("Ought to Believe", "catalogue"))
+
+    def test_openalex_search_keeps_works_with_a_pdf_and_sends_the_key(self):
+        bare = dict(self.OPENALEX_WORK, best_oa_location={})
+        oa._session = FakeSession({"https://api.openalex.org/works": FakeResponse(data={"results": [self.OPENALEX_WORK, bare]})})
+        real = config.OPENALEX_API_KEY
+        config.OPENALEX_API_KEY = "test-key"
+        try:
+            found = oa.openalex_search("ought to believe")
+        finally:
+            config.OPENALEX_API_KEY = real
+        self.assertEqual([c["title"] for c in found], ["Ought to Believe"])
+        self.assertEqual(oa._session.params[0]["api_key"], "test-key")
+        self.assertEqual(oa._session.params[0]["filter"], "is_oa:true,has_doi:true")
 
 
 class DispatchResearchTest(NoModel, support.TempCase):
