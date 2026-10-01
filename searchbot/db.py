@@ -71,13 +71,17 @@ def connect() -> sqlite3.Connection:
 since CREATE TABLE IF NOT EXISTS leaves an already-present table untouched."""
 _ADDED_COLUMNS = {
     "docs": [("citations", "INTEGER"), ("citations_updated", "TEXT"),
-             ("citations_source", "TEXT")],
+             ("citations_source", "TEXT"), ("isbn", "TEXT"), ("publisher", "TEXT")],
+    # where in the work a passage is: "p. 12", "pp. 12–13", "§ 2.1 Intellectualism", "Chapter V"
+    "chunks": [("locator", "TEXT")],
 }
 
 
 def migrate(c: sqlite3.Connection) -> None:
     for table, cols in _ADDED_COLUMNS.items():
         have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+        if not have:  # the table does not exist (yet); init() creates it with every column
+            continue
         for name, sqltype in cols:
             if name not in have:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}")

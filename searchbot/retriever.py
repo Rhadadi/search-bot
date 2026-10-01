@@ -104,8 +104,8 @@ def retrieve(c, query: str, slug: str = None, k: int = None,
     out = []
     for cid, score in top:
         row = c.execute(
-            "SELECT ch.id, ch.text, d.title, d.year, d.journal, d.doi, d.pmcid, d.pmid, d.source_file, d.slug, "
-            "d.citations "
+            "SELECT ch.id, ch.text, ch.locator, ch.ordinal, d.id AS doc_id, d.title, d.authors, d.year, d.journal, "
+            "d.publisher, d.doi, d.isbn, d.pmcid, d.pmid, d.url, d.license, d.kind, d.source_file, d.slug, d.citations "
             "FROM chunks ch JOIN docs d ON d.id=ch.doc_id WHERE ch.id=?", (cid,)).fetchone()
         if row:
             out.append({"chunk_id": cid, "score": round(score, 5),

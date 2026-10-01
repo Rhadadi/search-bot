@@ -27,7 +27,9 @@ EMBED_MODEL = os.environ.get("SEARCHBOT_EMBED_MODEL", "")
 # Retrieval / prompt budget
 CHUNK_CHARS = 1100          # ~300 tokens per chunk
 CHUNK_OVERLAP = 140
-MAX_CHUNKS_PER_DOC = 40     # cap pathological giant docs
+MAX_CHUNKS_PER_DOC = int(os.environ.get("SEARCHBOT_MAX_CHUNKS", "40"))  # cap pathological giant docs
+# pages read from one PDF; books (philosophy, the humanities) want far more than papers
+MAX_PDF_PAGES = int(os.environ.get("SEARCHBOT_MAX_PAGES", "60"))
 RECALL_K = 30               # per lane (vec / fts) before fusion
 FINAL_K = 8                 # chunks in evidence block
 RECENT_TURNS = 8            # raw turns re-injected each call
@@ -55,3 +57,12 @@ QUERY_INSTRUCT = os.environ.get(
     "SEARCHBOT_QUERY_INSTRUCT",
     "Instruct: Given a scientific question, retrieve relevant "
     "passages from research papers\nQuery: ")
+
+# Open-access acquisition (searchbot/oa.py), used by the research_section tool: only
+# sources that are free and legal to download (public domain, open access, or free to
+# read online). The User-Agent identifies the client, as these services ask.
+OA_USER_AGENT = os.environ.get("SEARCHBOT_USER_AGENT",
+                               "search-bot/1.0 (open-access research client; +https://github.com/raaaas/search-bot)")
+OA_MAX_BYTES = int(os.environ.get("SEARCHBOT_OA_MAX_BYTES", str(60 * 1024 * 1024)))
+OA_TIMEOUT_S = float(os.environ.get("SEARCHBOT_OA_TIMEOUT", "40"))
+OPENALEX_API_KEY = os.environ.get("SEARCHBOT_OPENALEX_KEY", "")

@@ -4,6 +4,45 @@ Change history for search-bot, newest first. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project is not
 version-tagged, so entries are dated.
 
+## 2026-10-01 — evidence-only research, open-access acquisition, books
+
+### Added
+- **`research_section`** (MCP tool, `agent.research_section`, `scripts/research.py`) —
+  raw evidence for a question, for the caller to synthesise: the retrieved passages
+  with full metadata (authors, year, venue, publisher, DOI, ISBN, PMID/PMCID, URL,
+  licence, locator, citation count, score, and whether vector, BM25 or both found
+  it), at most `max_per_work` passages per work, and a list of the works used. It
+  never calls the language model. `queries` adds further phrasings (retrieved and
+  merged at each passage's best score); `targets` names works to fetch
+  (`{doi}`, `{gutenberg}`, `{sep}`, `{url}`). A DOI with no open copy comes back
+  as a catalogue record, so the work can still be cited from verified details.
+- **Open-access acquisition** (`searchbot/oa.py`) — used by `research_section`:
+  Stanford Encyclopedia of Philosophy entries (cited by their archive edition),
+  Project Gutenberg public-domain books (through its catalogue file), arXiv,
+  Europe PMC open-access full texts, Zenodo open records and Creative
+  Commons-licensed DOIs. Files go to `search/{slug}/oa/{source}/`, their metadata
+  to `search/{slug}/oa_metadata.csv`. No shadow libraries.
+- **Books and web pages** in the indexer: HTML (split by heading, with an
+  encyclopedia entry's main text and bibliography picked out) and plain text
+  (split by chapter, Gutenberg's licence header and footer removed), besides PDF
+  and XML.
+- **Locators** — each chunk records where it is in its work: `PDF p. 12` or
+  `PDF pp. 12–13`, `§ 2.1 Intellectualism`, `Chapter V. Knowledge By Acquaintance…`
+  (`chunks.locator`). New `docs.isbn` and `docs.publisher` columns, read from the
+  metadata sidecar. Existing databases are migrated in place.
+- `SEARCHBOT_MAX_CHUNKS` and `SEARCHBOT_MAX_PAGES` lift the 40-chunk / 60-page
+  caps for corpora of books (defaults unchanged).
+- `scripts/embed_server.py` — a CPU OpenAI-compatible `/v1/embeddings` server
+  (fastembed, `BAAI/bge-base-en-v1.5` by default) for machines without llama.cpp.
+- 17 tests (`tests/test_research.py`), offline as before: the evidence shape and
+  the per-work cap, multi-query retrieval, when acquisition does and does not
+  run, locators for books, web pages and PDFs, sidecar metadata, the SEP citation
+  parser, catalogue-only DOIs, and that this path never reaches the language model
+  or LibGen.
+
+### Unchanged
+- `ask` and its acquisition behave exactly as before.
+
 ## 2026-09-30 — license, test suite, ranking signals
 
 ### Added

@@ -10,6 +10,7 @@ Tools:
   list_searches            - existing search folders + corpus stats
   add_search               - create search/{slug} folder and index every PDF/XML in it
   ask                      - grounded RAG answer for one search (uses external memory)
+  research_section         - raw evidence for a question (passages + full metadata), no generated answer
   index_status             - indexing job progress
   libgen_search            - federated catalogue search (LibGen + Anna's Archive/arXiv/PubMed)
   libgen_download          - download a record's file into the search folder, then index it
@@ -35,6 +36,23 @@ TOOLS = [
          "year_before": {"type": "integer", "description": "ignore evidence published after this year"},
          "recency": {"type": "number", "description": "weight of a half-life recency boost added to RRF (0 = off)"},
          "citations": {"type": "number", "description": "weight of a log-scaled OpenAlex citation-count boost (0 = off; run scripts/citations.py first)"}},
+         "required": ["slug", "question"]}},
+    {"name": "research_section", "description": "Return RAW scholarly evidence for a question, for the caller to synthesise: "
+     "retrieved passages with full metadata (authors, year, venue, DOI/ISBN/PMID, locator such as page or section, "
+     "retrieval score and lane), at most a few per work, plus a list of the works used. Never generates an answer. "
+     "If evidence is thin and acquire=true, fetches OPEN-ACCESS / public-domain works (SEP, Project Gutenberg, arXiv, "
+     "Europe PMC, Zenodo, CC-licensed DOIs), indexes them and retrieves again. Targets name specific works to fetch.",
+     "inputSchema": {"type": "object", "properties": {
+         "slug": {"type": "string", "description": "search folder, e.g. epistemology"},
+         "question": {"type": "string"},
+         "queries": {"type": "array", "items": {"type": "string"}, "description": "further phrasings to retrieve with"},
+         "acquire": {"type": "boolean", "description": "fetch open-access works when evidence is thin (default true)"},
+         "targets": {"type": "array", "items": {"type": "object"}, "description":
+                     "works to fetch: {doi} | {gutenberg: number} | {sep: entry name} | {url, title, authors, year, license}"},
+         "k": {"type": "integer", "description": "passages to return (default 15)"},
+         "max_per_work": {"type": "integer", "description": "passages from any one work (default 3)"},
+         "year_after": {"type": "integer"}, "year_before": {"type": "integer"},
+         "recency": {"type": "number"}, "citations": {"type": "number"}},
          "required": ["slug", "question"]}},
     {"name": "index_status", "description": "Indexing jobs status for a slug.",
      "inputSchema": {"type": "object", "properties": {"slug": {"type": "string"}}}},
@@ -93,6 +111,12 @@ def _dispatch(name, args):
                                  args["question"], rank=rank)
         res["agent_events"] = events
         return res
+    if name == "research_section":
+        from . import agent, retriever
+        return agent.research_section(c, args["slug"], args["question"], queries=args.get("queries"),
+                                      k=int(args.get("k", agent.RESEARCH_K)), acquire=args.get("acquire", True),
+                                      targets=args.get("targets"), max_per_work=int(args.get("max_per_work", agent.MAX_PER_WORK)),
+                                      rank=retriever.rank_opts(args))
     if name == "index_status":
         q = "SELECT id,slug,kind,state,info,updated_at FROM jobs"
         p = ()

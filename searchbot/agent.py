@@ -367,3 +367,102 @@ def _answer_with(c, slug, session_id, question, hits, topk, rounds, ev):
     memory.add_turn(c, session_id, slug, "assistant", shown, refs)
     ev("memory", "turn history updated (visible in chat history panel)")
     return {"answer": shown, "evidence": refs, "facts_stored": facts, "rounds": rounds}
+
+
+# ----------------------------------------------------------------------------- evidence only
+
+RESEARCH_K = 15
+MAX_PER_WORK = 3
+
+
+def _lanes(h):
+    return "vector+bm25" if h["in_vec"] and h["in_fts"] else ("vector" if h["in_vec"] else "bm25")
+
+
+def _retrieve_many(c, slug, queries, k, rank):
+    """Retrieve for each phrasing of the question and keep each passage once, at its best score."""
+    best = {}
+    for q in queries:
+        for h in retriever.retrieve(c, q, slug=slug, k=k, **rank):
+            old = best.get(h["chunk_id"])
+            if old is None or h["score"] > old["score"]:
+                if old:
+                    h["in_vec"], h["in_fts"] = h["in_vec"] or old["in_vec"], h["in_fts"] or old["in_fts"]
+                best[h["chunk_id"]] = h
+            else:
+                old["in_vec"], old["in_fts"] = old["in_vec"] or h["in_vec"], old["in_fts"] or h["in_fts"]
+    return sorted(best.values(), key=lambda h: -h["score"])
+
+
+def gather_evidence(c, slug, question, queries=None, k=RESEARCH_K, rank=None, acquire=True,
+                    targets=None, sources=None, ev=None):
+    """retrieve -> enough? -> (acquire open-access works, index, retrieve again), and no answer.
+    Explicit targets are always fetched first; otherwise acquisition happens only when the evidence
+    is thin. Returns (hits, rounds, catalogue records for targets with no open copy)."""
+    from . import oa
+    from .trace import Ev
+    ev = ev or Ev()
+    rank = rank or {}
+    queries = [question] + [q for q in (queries or []) if q and q != question]
+    recall = max(k * 3, 30)
+    rounds, catalogue = [], []
+    if acquire and targets:
+        got, cat = oa.acquire_round(c, slug, "", ev, targets=targets)
+        rounds.append({"acquired": got, "targets": len(targets)})
+        catalogue += cat
+    hits = _retrieve_many(c, slug, queries, recall, rank)
+    ok, missing = sufficiency(hits, question)
+    ev("gate", "evidence covers every key term" if ok else f"missing coverage: {', '.join(missing)}", ok=ok, missing=missing)
+    while acquire and not ok and len(rounds) < MAX_ROUNDS + (1 if targets else 0):
+        query = " ".join(missing) if missing else question
+        got, cat = oa.acquire_round(c, slug, query, ev, sources=sources or oa.DEFAULT_SOURCES)
+        rounds.append({"acquired": got, "query": query})
+        catalogue += cat
+        if not got:
+            break
+        hits = _retrieve_many(c, slug, queries, recall, rank)
+        ok, missing = sufficiency(hits, question)
+        ev("gate", "evidence now covers every key term" if ok else f"still missing: {', '.join(missing)}", ok=ok, missing=missing)
+    return hits, rounds, catalogue
+
+
+def _authors(s):
+    return [a.strip() for a in re.split(r";|\s+and\s+", s or "") if a.strip()]
+
+
+def research_section(c, slug, question, queries=None, k=RESEARCH_K, acquire=True, targets=None,
+                     sources=None, max_per_work=MAX_PER_WORK, rank=None, log=None):
+    """Raw scholarly evidence for a question, for a writer (a person or a model) to synthesise:
+    the passages themselves with their full metadata, at most max_per_work from any one work,
+    and a list of the works they come from. No language model is called."""
+    from .trace import Ev
+    events = []
+
+    def sink(m):
+        events.append(m)
+        if log:
+            log(m)
+    ev = Ev(log=sink)
+    hits, rounds, catalogue = gather_evidence(c, slug, question, queries=queries, k=k, rank=rank,
+                                              acquire=acquire, targets=targets, sources=sources, ev=ev)
+    per_work, evidence = {}, []
+    for h in hits:
+        if per_work.get(h["doc_id"], 0) >= max_per_work:
+            continue
+        per_work[h["doc_id"]] = per_work.get(h["doc_id"], 0) + 1
+        evidence.append({
+            "chunk_id": h["chunk_id"], "work_id": h["doc_id"], "passage": h["text"], "locator": h.get("locator") or "",
+            "title": h["title"], "authors": _authors(h.get("authors")), "year": h["year"], "journal": h["journal"],
+            "publisher": h.get("publisher") or "", "doi": h["doi"], "isbn": h.get("isbn") or "", "pmid": h["pmid"],
+            "pmcid": h["pmcid"], "url": h.get("url") or "", "license": h.get("license") or "",
+            "source_file": h["source_file"], "citations": h["citations"], "score": h["score"], "retrieval": _lanes(h)})
+        if len(evidence) >= k:
+            break
+    works = {}
+    for e in evidence:
+        w = works.setdefault(e["work_id"], {k_: e[k_] for k_ in ("work_id", "title", "authors", "year", "journal", "publisher",
+                                                                 "doi", "isbn", "url", "license", "source_file", "citations")})
+        w["passages"] = w.get("passages", 0) + 1
+        w.setdefault("locators", []).append(e["locator"])
+    return {"slug": slug, "question": question, "queries": queries or [], "evidence": evidence,
+            "works": list(works.values()), "catalogue": catalogue, "rounds": rounds, "events": events}

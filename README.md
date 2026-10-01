@@ -106,6 +106,34 @@ re-run does not re-query the same dead ends, while a failed request leaves rows
 untouched and retries next time. Set `SEARCHBOT_MAILTO` to use OpenAlex's polite
 pool; without it the anonymous rate limit applies.
 
+## Evidence only: `research_section`
+
+For when you (or another model) want to do the writing yourself: the MCP tool
+`research_section` and `scripts/research.py` return the evidence and stop. No answer
+is generated and the chat model is never called, so only an embeddings endpoint is
+needed.
+
+```bash
+.venv/bin/python scripts/research.py epistemology \
+    "What did Russell mean by knowledge by acquaintance?" \
+    --query "acquaintance description Russell 1912" \
+    --target gutenberg:5827 --target sep:knowledge-acquaindescrip --digest
+```
+
+Each evidence item carries the passage, its `locator` (page or section), authors,
+year, venue, publisher, DOI/ISBN/PMID/PMCID, URL, licence, citation count, score and
+retrieval lane; `works` lists the distinct works. When the evidence is thin (or when
+`targets` names works), it acquires **open-access and public-domain** material only
+(`searchbot/oa.py`: the Stanford Encyclopedia of Philosophy, Project Gutenberg, arXiv,
+Europe PMC, Zenodo, CC-licensed DOIs), indexes it and retrieves again. A DOI with no
+open copy is returned as a catalogue record.
+
+For corpora of books, raise the per-document caps (`SEARCHBOT_MAX_CHUNKS=4000`,
+`SEARCHBOT_MAX_PAGES=900`). Without llama.cpp, `scripts/embed_server.py` serves
+embeddings on the CPU (`pip install fastembed`; set
+`SEARCHBOT_QUERY_INSTRUCT="Represent this sentence for searching relevant passages: "`
+for its default bge model).
+
 ## Agentic trace UI
 
 Every question runs as a background **run** (`searchbot/trace.py`) emitting typed,

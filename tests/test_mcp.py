@@ -37,7 +37,7 @@ class ToolSchemaTest(support.TempCase):
     def test_every_dispatched_tool_is_advertised(self):
         """A tool the server runs but never lists is invisible to clients."""
         listed = {t["name"] for t in mcp_server.TOOLS}
-        self.assertEqual(listed, {"list_searches", "add_search", "ask", "index_status",
+        self.assertEqual(listed, {"list_searches", "add_search", "ask", "research_section", "index_status",
                                   "libgen_search", "libgen_download"})
 
     def test_module_docstring_matches_the_tools(self):
